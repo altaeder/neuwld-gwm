@@ -85,6 +85,18 @@ if drm.found()
       requires_private += dep
     endif
   endforeach
+
+  if drivers.contains('auto') or drivers.contains('amdgpu')
+    dep_amdgpu = dependency('libdrm_amdgpu', required: drivers.contains('amdgpu'))
+    if dep_amdgpu.found()
+      dep_gbm = dependency('gbm', required: true)
+      dep_egl = dependency('egl', required: true)
+      dep_glesv2 = dependency('glesv2', required: true)
+      libwld_src += ['amdgpu.c', 'gl.c']
+      c_args += '-DWITH_DRM_AMDGPU=1'
+      requires_private += [dep_amdgpu, dep_gbm, dep_egl, dep_glesv2]
+    endif
+  endif
 endif
 
 if wayland.found() and drm.found()
