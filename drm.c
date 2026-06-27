@@ -42,6 +42,9 @@ const static struct drm_driver *drivers[] = {
 #if WITH_DRM_NOUVEAU
 	&nouveau_drm_driver,
 #endif
+#if WITH_DRM_AMDGPU
+	&amdgpu_drm_driver,
+#endif
 	&dumb_drm_driver
 };
 
