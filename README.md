@@ -1,14 +1,6 @@
-newwld
-===
-neuwld is a drawing library that targets Wayland. The [swc Wayland compositor
-library](https://github.com/michaelforney/swc) uses wld.
+# neuwld-gwm
 
-Installing
-==========
-To build and install neuwld, simply use:
+A GalleryWM-oriented fork of neuwld.
 
-```Bash
-muon setup build
-ninja -C build
-muon -C build install
-```
+Upstream:
+https://git.sr.ht/~shrub900/neuwld
