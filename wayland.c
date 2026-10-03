@@ -76,7 +76,7 @@ interface_id(const char *string)
 	if (strcmp(string, "shm") == 0)
 		return WLD_SHM;
 
-	fprintf(stderr, "Unknown Wayland interface specified: '%s'\n", string);
+	// fprintf(stderr, "Unknown Wayland interface specified: '%s'\n", string);
 
 	return WLD_NONE;
 }
@@ -97,12 +97,18 @@ wld_wayland_create_context(struct wl_display *display, enum wld_wayland_interfac
 	if ((interface_string = getenv("WLD_WAYLAND_INTERFACE"))) {
 		id = interface_id(interface_string);
 
-		if ((context = impls[id]->create_context(display, queue)))
+		/*if ((context = impls[id]->create_context(display, queue)))
 			return &context->base;
+    Ω PATCH, crash fix: ↓*/
+
+    if (id >= 0 && impls[id] &&
+        (context = impls[id]->create_context(display, queue)))
+          goto done;
 
 		fprintf(stderr, "Could not create context for Wayland interface '%s'\n",
 		        interface_string);
 
+    wl_event_queue_destroy(queue);
 		return NULL;
 	}
 

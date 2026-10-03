@@ -210,14 +210,39 @@ error0:
 	return NULL;
 }
 
+
 struct buffer *
 context_import_buffer(struct wld_context *context,
                       uint32_t type, union wld_object object,
                       uint32_t width, uint32_t height,
                       uint32_t format, uint32_t pitch)
 {
-	return NULL;
+  return NULL; // <-- BAD KITTY? x(
 }
+
+/*
+// GOOD KITTY VVVV
+struct buffer *
+context_import_buffer(struct wld_context *base,
+                      uint32_t type, union wld_object object,
+                      uint32_t width, uint32_t height,
+                      uint32_t format, uint32_t pitch)
+{
+    struct drm_context *context = drm_context(base);
+
+    //fprintf(stderr, "WAYLAND DRM IMPORT forwarding\n");
+
+    return context->driver_context->impl->import_buffer(
+        context->driver_context,
+        type,
+        object,
+        width,
+        height,
+        format,
+        pitch);
+}
+// GOOD KITTY AAAA
+*/
 
 void
 context_destroy(struct wld_context *base)

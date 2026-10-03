@@ -31,6 +31,7 @@
 #include <xf86drm.h>
 
 #include <errno.h>
+#include <string.h>
 
 struct dumb_context {
 	struct wld_context base;
@@ -42,8 +43,12 @@ struct dumb_buffer {
 	struct wld_exporter exporter;
 	struct dumb_context *context;
 	uint32_t handle;
+	void *scanout;
+	//bool shadowed;
+	bool shadow_enabled;
 };
 
+#define BUFFER_IMPLEMENTS_FLUSH
 #include "interface/buffer.h"
 #include "interface/context.h"
 #define DRM_DRIVER_NAME dumb
@@ -105,6 +110,7 @@ static struct buffer *
 new_buffer(struct dumb_context *context,
            uint32_t width, uint32_t height,
            uint32_t format, uint32_t handle,
+           //unsigned long pitch, bool shadowed)
            unsigned long pitch)
 {
 	struct dumb_buffer *buffer;
@@ -116,6 +122,9 @@ new_buffer(struct dumb_context *context,
 	                  width, height, format, pitch);
 	buffer->context = context;
 	buffer->handle = handle;
+	buffer->scanout = NULL;
+	//buffer->shadowed = shadowed;
+	buffer->shadow_enabled = false;
 	buffer->exporter.export = &export;
 	wld_buffer_add_exporter(&buffer->base.base, &buffer->exporter);
 
@@ -139,6 +148,8 @@ context_create_buffer(struct wld_context *base,
 		goto error0;
 
 	buffer = new_buffer(context, width, height, format,
+	                    //create_dumb.handle, create_dumb.pitch,
+	                    //flags & WLD_DRM_FLAG_SCANOUT);
 	                    create_dumb.handle, create_dumb.pitch);
 
 	if (!buffer)
@@ -175,6 +186,7 @@ context_import_buffer(struct wld_context *base,
 		return NULL;
 	}
 
+	//return new_buffer(context, width, height, format, handle, pitch, false);
 	return new_buffer(context, width, height, format, handle, pitch);
 }
 
@@ -209,20 +221,70 @@ buffer_map(struct buffer *base)
 	if (data == MAP_FAILED)
 		return false;
 
-	buffer->base.base.map = data;
+	buffer->scanout = data;
+	//if (buffer->shadowed) {
+	if (base->blend_target)
+		buffer->shadow_enabled = true;
+
+	if (buffer->shadow_enabled) {
+		buffer->base.base.map = calloc(buffer->base.base.height,
+		                               buffer->base.base.pitch);
+		if (!buffer->base.base.map) {
+			munmap(data, buffer->base.base.pitch * buffer->base.base.height);
+			buffer->scanout = NULL;
+			return false;
+		}
+	} else {
+		buffer->base.base.map = data;
+	}
 
 	return true;
 }
 
+void
+buffer_flush(struct buffer *base)
+{
+	struct dumb_buffer *buffer = dumb_buffer(&base->base);
+	pixman_box32_t *boxes;
+	int count;
+
+	//if (!buffer->shadowed || !buffer->scanout)
+	if (!buffer->shadow_enabled || !buffer->scanout)
+		return;
+
+	boxes = pixman_region32_rectangles(&base->base.damage, &count);
+	while (count--) {
+		int32_t y;
+		size_t offset = (size_t)boxes->y1 * base->base.pitch +
+		                (size_t)boxes->x1 * 4;
+		size_t size = (size_t)(boxes->x2 - boxes->x1) * 4;
+
+		for (y = boxes->y1; y < boxes->y2; ++y) {
+			memcpy((uint8_t *)buffer->scanout + offset,
+			       (uint8_t *)base->base.map + offset, size);
+			offset += base->base.pitch;
+		}
+		++boxes;
+	}
+}
+
+
+
 bool
 buffer_unmap(struct buffer *buffer)
 {
-	if (munmap(buffer->base.map,
+	struct dumb_buffer *dumb = dumb_buffer(&buffer->base);
+
+	if (munmap(dumb->scanout,
 	           buffer->base.pitch * buffer->base.height)
 	    == -1) {
 		return false;
 	}
 
+  //if (dumb->shadowed)
+  if (dumb->shadow_enabled)
+    free (buffer->base.map);
+  dumb->scanout = NULL;
 	buffer->base.map = NULL;
 
 	return true;

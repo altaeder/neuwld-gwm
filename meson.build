@@ -5,7 +5,8 @@ project('wld', 'c',
   default_options: [
     # C11: libdrm uses anonymous union extension
     # C23: nouveau.c uses empty initializer extension
-    'c_std=c23',
+    'c_std=c11',
+    # Ω LOOK AT THIS HERE!!
     'warning_level=3',
     'default_library=static',
     'b_ndebug=if-release',
@@ -67,11 +68,12 @@ endif
 
 drm = dependency('libdrm', required: get_option('drm'))
 if drm.found()
-  libwld_src += ['drm.c', 'dumb.c']  
+  libwld_src += ['drm.c', 'dumb.c']
   requires_private += drm
 
   drivers = get_option('drivers')
   foreach driver, src : {
+    'amdgpu': ['amdgpu.c', 'gl.c'], # Ω MY ADD AS WELL. HUH?!
     'nouveau': ['nouveau.c'],
     'intel': ['intel.c', 'intel/batch.c'],
   }
@@ -81,7 +83,7 @@ if drm.found()
     dep = dependency('libdrm_' + driver, required: drivers.contains(driver))
     if dep.found()
       libwld_src += src
-      c_args += '-DWITH_DRM_@0@=1'.format(driver)
+      c_args += '-DWITH_DRM_@0@=1'.format(driver.to_upper())
       requires_private += dep
     endif
   endforeach
@@ -93,7 +95,8 @@ if drm.found()
       dep_egl = dependency('egl', required: true)
       dep_glesv2 = dependency('glesv2', required: true)
       libwld_src += ['amdgpu.c', 'gl.c']
-      c_args += '-DWITH_DRM_AMDGPU=1'
+      c_args += '-DWITH_DRM_AMDGPU=1'.format(driver.to_upper())
+                                          ## IMPORTANT TO UPPER
       requires_private += [dep_amdgpu, dep_gbm, dep_egl, dep_glesv2]
     endif
   endif

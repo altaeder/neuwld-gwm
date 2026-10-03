@@ -713,8 +713,11 @@ gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
 	/* setup GL state, draw */
 	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
 	glViewport(0, 0, dst->width, dst->height);
+
 	glDisable(GL_SCISSOR_TEST);
-	glDisable(GL_BLEND);
+	glEnable(GL_BLEND); // Enable transparency (previously disabled)
+
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Blend handler
 	glUseProgram(context->copy_program);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -757,7 +760,7 @@ gl_draw_fill(struct gl_buffer *dst, uint32_t color, int32_t x, int32_t y,
 {
 	struct gl_context *context = dst->context;
 	/* ARGB->RGBA-floats */
-	float a = ((color >> 24) & 0xff) / 255.0f;
+	float a = ((color >> 24) & 0xff) / 255.0f; // <-- MAYBE CHANGE TO 0x00
 	float r = ((color >> 16) & 0xff) / 255.0f;
 	float g = ((color >> 8) & 0xff) / 255.0f;
 	float b = ((color >> 0) & 0xff) / 255.0f;

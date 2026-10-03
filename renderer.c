@@ -99,7 +99,11 @@ wld_set_target_surface(struct wld_renderer *renderer, struct wld_surface *surfac
 	if (!(back_buffer = surface->impl->back(surface)))
 		return false;
 
-	return renderer->impl->set_target(renderer, back_buffer);
+  if (!renderer->impl->set_target(renderer, back_buffer))
+    return false;
+
+  renderer->target = &back_buffer->base;
+  return true;
 }
 
 EXPORT
@@ -139,6 +143,59 @@ wld_copy_region(struct wld_renderer *renderer,
 	                            dst_x, dst_y, region);
 }
 
+// NEEEEW Ω
+EXPORT
+void
+wld_blend_region(struct wld_renderer *renderer, struct wld_buffer *buffer,
+                 int32_t dst_x, int32_t dst_y, pixman_region32_t *region)
+{
+	pixman_image_t *src = NULL, *dst = NULL;
+	pixman_region32_t clip;
+	pixman_box32_t *extents;
+
+	if (!renderer->target || !pixman_region32_not_empty(region))
+		return;
+
+	/* Complete accelerator writes before accessing the buffers on the CPU. */
+	renderer->impl->flush(renderer);
+	if (!wld_map(buffer))
+		return;
+	((struct buffer *)renderer->target)->blend_target = true;
+	if (!wld_map(renderer->target))
+		goto unmap_src;
+
+	src = pixman_image_create_bits(format_wld_to_pixman(buffer->format),
+	                               buffer->width, buffer->height,
+	                               buffer->map, buffer->pitch);
+	dst = pixman_image_create_bits(format_wld_to_pixman(renderer->target->format),
+	                               renderer->target->width,
+	                               renderer->target->height,
+	                               renderer->target->map,
+	                               renderer->target->pitch);
+	if (!src || !dst)
+		goto destroy;
+
+	pixman_region32_init(&clip);
+	pixman_region32_copy(&clip, region);
+	pixman_region32_translate(&clip, dst_x, dst_y);
+	extents = pixman_region32_extents(region);
+	pixman_image_set_clip_region32(dst, &clip);
+	pixman_image_composite32(PIXMAN_OP_OVER, src, NULL, dst,
+	                         extents->x1, extents->y1, 0, 0,
+	                         extents->x1 + dst_x, extents->y1 + dst_y,
+	                         extents->x2 - extents->x1,
+	                         extents->y2 - extents->y1);
+	pixman_region32_fini(&clip);
+
+destroy:
+	if (src)
+		pixman_image_unref(src);
+	if (dst)
+		pixman_image_unref(dst);
+	wld_unmap(renderer->target);
+unmap_src:
+	wld_unmap(buffer);
+}
 
 /* https://en.wikipedia.org/wiki/Midpoint_circle_algorithm */
 static void
@@ -152,7 +209,7 @@ circle_points(struct wld_renderer *renderer, uint32_t color,
 		renderer->impl->fill_rectangle(renderer, color, x1-y2, y1+x2, 2*y2 + 1, 1);
 		renderer->impl->fill_rectangle(renderer, color, x1-y2, y1-x2, 2*y2 + 1, 1);
 	}
-	
+
 	else {
 		renderer->impl->fill_rectangle(renderer, color, x1+x2, y1+y2, 1, 1);
 		renderer->impl->fill_rectangle(renderer, color, x1-x2, y1+y2, 1, 1);
@@ -167,7 +224,7 @@ circle_points(struct wld_renderer *renderer, uint32_t color,
 
 EXPORT
 void
-wld_draw_circle(struct wld_renderer *renderer, uint32_t color, 
+wld_draw_circle(struct wld_renderer *renderer, uint32_t color,
 				int32_t x, int32_t y, uint32_t r, bool fill)
 {
 	int32_t x1 = 0, y1 = r;
@@ -202,9 +259,9 @@ wld_draw_line(struct wld_renderer *renderer, uint32_t color,
 
 		if (x1==x2 && y1==y2)
 			break;
-		
+
 		e2 = 2*err;
-		
+
 		if (e2 >= dy) {
 			err += dy;
 			x1 += sx;
@@ -235,5 +292,9 @@ void
 wld_flush(struct wld_renderer *renderer)
 {
 	renderer->impl->flush(renderer);
+		if (renderer->target && ((struct buffer *)renderer->target)->base.impl->flush)
+		((struct buffer *)renderer->target)->base.impl->flush(
+		    (struct buffer *)renderer->target);
 	renderer->impl->set_target(renderer, NULL);
+  renderer->target = NULL;
 }

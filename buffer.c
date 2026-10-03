@@ -39,6 +39,7 @@ buffer_initialize(struct buffer *buffer,
 	buffer->map_ref = 0;
 	buffer->exporters = NULL;
 	buffer->destructors = NULL;
+	buffer->blend_target = false;
 	pixman_region32_init_rect(&buffer->base.damage, 0, 0, width, height);
 }
 

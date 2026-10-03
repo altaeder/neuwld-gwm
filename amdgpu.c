@@ -552,6 +552,7 @@ driver_create_context(int drm_fd)
 bool
 driver_device_supported(uint32_t vendor_id, uint32_t device_id)
 {
+  //return true; // FORCE THE GPU STACK
 	return vendor_id == 0x1002; /* AMD/ATI */
 }
 
