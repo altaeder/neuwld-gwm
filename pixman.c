@@ -310,6 +310,32 @@ renderer_copy_rectangle(struct wld_renderer *base, struct buffer *buffer,
 }
 
 void
+renderer_blend_rectangle(struct wld_renderer *base, struct buffer *buffer,
+                         int32_t dst_x, int32_t dst_y,
+                         int32_t src_x, int32_t src_y,
+                         uint32_t width, uint32_t height)
+{
+  struct pixman_renderer *renderer = pixman_renderer(base);
+  pixman_image_t *src, *dst = renderer->target;
+
+  if (!dst)
+    return;
+
+  src = pixman_image(buffer);
+  if (!src)
+    return;
+
+  // Preserve existing blend-target behaviour
+  if (base->target)
+    ((struct buffer *)base->target)->blend_target = true;
+
+  pixman_image_composite(PIXMAN_OP_OVER, src, NULL, dst,
+                         src_x, src_y, 0, 0,
+                         dst_x, dst_y, width, height);
+  pixman_image_unref(src);
+}
+
+void
 renderer_copy_region(struct wld_renderer *base, struct buffer *buffer,
                      int32_t dst_x, int32_t dst_y,
                      pixman_region32_t *region)

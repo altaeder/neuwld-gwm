@@ -219,6 +219,12 @@ gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
              int32_t dst_y, int32_t src_x, int32_t src_y, uint32_t width,
              uint32_t height);
 
+bool
+gl_draw_blend(struct gl_buffer *src, struct gl_buffer *dst,
+              int32_t dst_x, int32_t dst_y,
+              int32_t src_x, int32_t src_y,
+              uint32_t width, uint32_t height);
+
 /**
  * @brief Fill rectangle of buffer with solid color.
  *

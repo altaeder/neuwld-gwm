@@ -650,10 +650,14 @@ gl_copy_program_create(struct gl_context *context)
 	return true;
 }
 
+
+// Ω new gpu blend
 bool
-gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
-             int32_t dst_y, int32_t src_x, int32_t src_y, uint32_t width,
-             uint32_t height)
+gl_draw_rectangle(struct gl_buffer *src, struct gl_buffer *dst,
+                  int32_t dst_x, int32_t dst_y,
+                  int32_t src_x, int32_t src_y,
+                  uint32_t width, uint32_t height,
+                  bool blend)
 {
 	struct gl_context *context = dst->context;
 	float x0, x1, y0, y1;
@@ -715,9 +719,15 @@ gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
 	glViewport(0, 0, dst->width, dst->height);
 
 	glDisable(GL_SCISSOR_TEST);
-	glEnable(GL_BLEND); // Enable transparency (previously disabled)
 
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Blend handler
+	if (blend)
+	{
+	  glEnable(GL_BLEND);
+  	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Blend handler
+  } else {
+    glDisable(GL_BLEND);
+  }
+
 	glUseProgram(context->copy_program);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -753,6 +763,137 @@ gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
 	glFlush();
 	return true;
 }
+
+bool
+gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
+             int32_t dst_y, int32_t src_x, int32_t src_y, uint32_t width,
+             uint32_t height)
+{
+  return gl_draw_rectangle(src, dst,
+                           dst_x, dst_y,
+                           src_x, src_y,
+                           width, height,
+                           false);
+}
+
+bool
+gl_draw_blend(struct gl_buffer *src, struct gl_buffer *dst,
+              int32_t dst_x, int32_t dst_y,
+              int32_t src_x, int32_t src_y,
+              uint32_t width, uint32_t height)
+{
+    return gl_draw_rectangle(src, dst,
+                             dst_x, dst_y,
+                             src_x, src_y,
+                             width, height,
+                             true);
+}
+
+/*
+bool                   //  Ω old draw copy
+gl_draw_copy(struct gl_buffer *src, struct gl_buffer *dst, int32_t dst_x,
+             int32_t dst_y, int32_t src_x, int32_t src_y, uint32_t width,
+             uint32_t height)
+{
+	struct gl_context *context = dst->context;
+	float x0, x1, y0, y1;
+	float u0, u1, v0, v1;
+	float verts[16];
+
+	if (!src->context || !dst->context || src->context != dst->context) {
+		return false;
+	}
+
+	if (!gl_buffer_ensure(src) || !gl_buffer_ensure(dst) ||
+	    !gl_make_current(context)) {
+		DEBUG(
+		    "amdgpu: gl_draw_copy precheck failed (src/dst import/current)\n");
+		return false;
+	}
+	if (!context->copy_program || !context->copy_vbo ||
+	    context->copy_uniform_sampler < 0) {
+		DEBUG("amdgpu: gl_draw_copy invalid copy program state\n");
+		return false;
+	}
+	if (!gpu_access_ensure(src, false) || !gpu_access_ensure(dst, true)) {
+		DEBUG("amdgpu: gl_draw_copy gpu_access_ensure failed\n");
+		return false;
+	}
+
+	gl_error_clear();
+
+	x0 = -1.0f + 2.0f * (float)dst_x / dst->width;
+	x1 = -1.0f + 2.0f * (float)(dst_x + width) / dst->width;
+	y0 = -1.0f + 2.0f * (float)dst_y / dst->height;
+	y1 = -1.0f + 2.0f * (float)(dst_y + height) / dst->height;
+
+	u0 = (float)src_x / src->width;
+	u1 = (float)(src_x + width) / src->width;
+	v0 = (float)src_y / src->height;
+	v1 = (float)(src_y + height) / src->height;
+
+	// TODO? i dont think ive flipped any viewports?
+	verts[0] = x0;
+	verts[1] = y0;
+	verts[2] = u0;
+	verts[3] = v0;
+	verts[4] = x1;
+	verts[5] = y0;
+	verts[6] = u1;
+	verts[7] = v0;
+	verts[8] = x0;
+	verts[9] = y1;
+	verts[10] = u0;
+	verts[11] = v1;
+	verts[12] = x1;
+	verts[13] = y1;
+	verts[14] = u1;
+	verts[15] = v1;
+
+	// setup GL state, draw 
+	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+	glViewport(0, 0, dst->width, dst->height);
+
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_BLEND); // Enable transparency (previously disabled) ΩΩ CHANGED BACK!
+	//glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Blend handler
+
+	glUseProgram(context->copy_program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, src->texture);
+	glUniform1i(context->copy_uniform_sampler, 0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, context->copy_vbo);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glEnableVertexAttribArray(context->copy_attr_pos);
+	glEnableVertexAttribArray(context->copy_attr_uv);
+	glVertexAttribPointer(context->copy_attr_pos, 2, GL_FLOAT, GL_FALSE,
+	                      4 * sizeof(float), (const GLvoid *)0);
+	glVertexAttribPointer(context->copy_attr_uv, 2, GL_FLOAT, GL_FALSE,
+	                      4 * sizeof(float),
+	                      (const GLvoid *)(uintptr_t)(2 * sizeof(float)));
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	glDisableVertexAttribArray(context->copy_attr_pos);
+	glDisableVertexAttribArray(context->copy_attr_uv);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	if (!gl_error_report("gl_draw_copy")) {
+		return false;
+	}
+
+	if (src == dst) {
+		if (!gl_buffer_mark_gpu_busy(dst, GL_ACCESS_READ | GL_ACCESS_WRITE)) {
+			return false;
+		}
+	} else if (!gl_buffer_mark_gpu_busy(src, GL_ACCESS_READ) ||
+	           !gl_buffer_mark_gpu_busy(dst, GL_ACCESS_WRITE)) {
+		return false;
+	}
+
+	glFlush();
+	return true;
+}
+*/
 
 bool
 gl_draw_fill(struct gl_buffer *dst, uint32_t color, int32_t x, int32_t y,

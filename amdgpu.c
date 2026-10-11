@@ -78,6 +78,10 @@ renderer_copy_rectangle(struct wld_renderer *base, struct buffer *buffer_base,
                         int32_t dst_x, int32_t dst_y, int32_t src_x,
                         int32_t src_y, uint32_t width, uint32_t height);
 void
+renderer_blend_rectangle(struct wld_renderer *base, struct buffer *buffer_base,
+                        int32_t dst_x, int32_t dst_y, int32_t src_x,
+                        int32_t src_y, uint32_t width, uint32_t height);
+void
 renderer_destroy(struct wld_renderer *base);
 void
 renderer_draw_text(struct wld_renderer *base, struct font *font, uint32_t color,
@@ -111,6 +115,13 @@ fallback_copy_rectangle(struct amdgpu_renderer *renderer,
                         struct amdgpu_buffer *src, int32_t dst_x, int32_t dst_y,
                         int32_t src_x, int32_t src_y, uint32_t width,
                         uint32_t height);
+static void
+fallback_blend_rectangle(struct amdgpu_renderer *renderer,
+                        struct amdgpu_buffer *src,
+                        int32_t dst_x, int32_t dst_y,
+                        int32_t src_x, int32_t src_y,
+                        uint32_t width, uint32_t height);
+
 static void
 fallback_fill_rectangle(struct amdgpu_renderer *renderer, uint32_t color,
                         int32_t x, int32_t y, uint32_t width, uint32_t height);
@@ -639,6 +650,50 @@ renderer_copy_rectangle(struct wld_renderer *base, struct buffer *buffer_base,
 	}
 }
 
+// Ω Renderer blend function, for ARGB surfaces Ω
+void
+renderer_blend_rectangle(struct wld_renderer *base, struct buffer *buffer,
+                         int32_t dst_x, int32_t dst_y,
+                         int32_t src_x, int32_t src_y,
+                         uint32_t width, uint32_t height)
+{
+  struct amdgpu_renderer *r = amdgpu_renderer(base);
+  struct amdgpu_buffer *buf_dst = r->target;
+  struct amdgpu_buffer *buf_src;
+  const char *fallback_reason = NULL;
+
+  if (!buf_dst || !buffer ||
+      buffer->base.impl != &wld_buffer_impl ||
+      width == 0 || height == 0)
+    return;
+
+  buf_src = amdgpu_buffer(&buffer->base);
+
+  if (!rect_in_bounds(buf_src, src_x, src_y, width, height))
+  {
+    fallback_reason = "buf_src-out-of-bounds";
+  } else if (!rect_in_bounds(buf_dst, dst_x, dst_y, width, height)) {
+    fallback_reason = "buf_dst-out-of-bounds";
+  } else if (buf_src == buf_dst &&
+           rect_overlap(src_x, src_y, width, height,
+                        dst_x, dst_y, width, height)) {
+    fallback_reason = "self-overlap";
+  } else if (!gl_draw_blend(&buf_src->gl, &buf_dst->gl,
+                          dst_x, dst_y, src_x, src_y,
+                          width, height)) {
+    fallback_reason = "gl_draw_blend-failed";
+  }
+
+  if (fallback_reason)
+  {
+    DEBUG("amdgpu: blend fallback reason=%s\n", fallback_reason);
+
+    fallback_blend_rectangle(r, buf_src,
+                             dst_x, dst_y, src_x, src_y,
+                             width, height);
+  }
+}
+
 /**
  * @brief Destroy an amdgpu_renderer.
  *
@@ -932,6 +987,29 @@ fallback_copy_rectangle(struct amdgpu_renderer *renderer,
 	wld_flush(renderer->pixman_renderer);
 	gl_buffer_mark_cpu_access(&renderer->target->gl, true);
 	pixman_target_set(renderer, NULL);
+}
+
+static void
+fallback_blend_rectangle(struct amdgpu_renderer *renderer,
+                         struct amdgpu_buffer *src,
+                         int32_t dst_x, int32_t dst_y,
+                         int32_t src_x, int32_t src_y,
+                         uint32_t width, uint32_t height)
+{
+  if (!cpu_access_ensure_copy(src, renderer->target))
+    return;
+
+  if (!pixman_target_set(renderer, renderer->target))
+    return;
+
+  wld_blend_rectangle(renderer->pixman_renderer,
+                      &src->base.base,
+                      dst_x, dst_y,
+                      src_x, src_y,
+                      width, height);
+  wld_flush(renderer->pixman_renderer);
+  gl_buffer_mark_cpu_access(&renderer->target->gl, true);
+  pixman_target_set(renderer, NULL);
 }
 
 /**

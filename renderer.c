@@ -135,6 +135,19 @@ wld_copy_rectangle(struct wld_renderer *renderer,
 
 EXPORT
 void
+wld_blend_rectangle(struct wld_renderer *renderer,
+                    struct wld_buffer *buffer,
+                    int32_t dst_x, int32_t dst_y,
+                    int32_t src_x, int32_t src_y,
+                    uint32_t width, uint32_t height)
+{
+  renderer->impl->blend_rectangle(
+    renderer, (struct buffer *)buffer,
+    dst_x, dst_y, src_x, src_y, width, height);
+}
+
+EXPORT
+void
 wld_copy_region(struct wld_renderer *renderer,
                 struct wld_buffer *buffer,
                 int32_t dst_x, int32_t dst_y, pixman_region32_t *region)
@@ -143,20 +156,33 @@ wld_copy_region(struct wld_renderer *renderer,
 	                            dst_x, dst_y, region);
 }
 
-// NEEEEW Ω
+// NEEEEW Ω ¥(with updated gpu accel)
 EXPORT
 void
 wld_blend_region(struct wld_renderer *renderer, struct wld_buffer *buffer,
                  int32_t dst_x, int32_t dst_y, pixman_region32_t *region)
 {
-	pixman_image_t *src = NULL, *dst = NULL;
-	pixman_region32_t clip;
-	pixman_box32_t *extents;
+  pixman_box32_t *box;
+  int num_boxes;
 
 	if (!renderer->target || !pixman_region32_not_empty(region))
 		return;
 
-	/* Complete accelerator writes before accessing the buffers on the CPU. */
+	box = pixman_region32_rectangles(region, &num_boxes);
+
+	while (num_boxes--)
+	{
+	  wld_blend_rectangle(renderer, buffer,
+	                      dst_x + box->x1, dst_y + box->y1,
+	                      box->x1, box->y1,
+	                      box->x2 - box->x1,
+	                      box->y2 - box->y1);
+    ++box;
+	}
+}
+
+/*
+	// Complete accelerator writes before accessing the buffers on the CPU.
 	renderer->impl->flush(renderer);
 	if (!wld_map(buffer))
 		return;
@@ -196,6 +222,7 @@ destroy:
 unmap_src:
 	wld_unmap(buffer);
 }
+*/
 
 /* https://en.wikipedia.org/wiki/Midpoint_circle_algorithm */
 static void

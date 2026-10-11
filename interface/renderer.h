@@ -34,6 +34,12 @@ static void renderer_copy_rectangle(struct wld_renderer *renderer,
                                     int32_t src_x, int32_t src_y,
                                     uint32_t width, uint32_t height);
 
+static void renderer_blend_rectangle(struct wld_renderer *renderer,
+                                    struct buffer *buffer,
+                                    int32_t dst_x, int32_t dst_y,
+                                    int32_t src_x, int32_t src_y,
+                                    uint32_t width, uint32_t height);
+
 #ifdef RENDERER_IMPLEMENTS_REGION
 static void renderer_fill_region(struct wld_renderer *base, uint32_t color,
                                  pixman_region32_t *region);
@@ -55,6 +61,7 @@ static const struct wld_renderer_impl wld_renderer_impl = {
 	.set_target = &renderer_set_target,
 	.fill_rectangle = &renderer_fill_rectangle,
 	.copy_rectangle = &renderer_copy_rectangle,
+	.blend_rectangle = &renderer_blend_rectangle,
 #ifdef RENDERER_IMPLEMENTS_REGION
 	.fill_region = &renderer_fill_region,
 	.copy_region = &renderer_copy_region,

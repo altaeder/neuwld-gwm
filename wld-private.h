@@ -105,6 +105,10 @@ struct wld_renderer_impl {
 	                       int32_t dst_x, int32_t dst_y,
 	                       int32_t src_x, int32_t src_y,
 	                       uint32_t width, uint32_t height);
+	void (*blend_rectangle)(struct wld_renderer *renderer, struct buffer *src,
+	                       int32_t dst_x, int32_t dst_y,
+	                       int32_t src_x, int32_t src_y,
+	                       uint32_t width, uint32_t height);
 	void (*copy_region)(struct wld_renderer *renderer, struct buffer *src,
 	                    int32_t dst_x, int32_t dst_y,
 	                    pixman_region32_t *region);
